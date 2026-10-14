@@ -15,7 +15,9 @@ const MAX_AGENTS = 30
 const MAX_FILES = 40
 const MAX_TESTS = 30
 const SLOW_MS = 10_000
-const SCREEN_BG = '#16171f'
+// A pure grey: on a terminal that reports only 256 colours a hex colour is rounded
+// to the nearest palette entry, and a near-black with any blue in it lands on navy.
+const SCREEN_BG = '#161616'
 const SCREEN_INK = '#c9cde3'
 
 // Appended to an Explore worker's task: its report lands in main's context and

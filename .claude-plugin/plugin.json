@@ -1,6 +1,6 @@
 {
   "name": "agent-dashboard",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Live dashboard pane for Claude Code (main, worker, advisor, context, files, tests, cost, limits, tools, timeline, log), plus a Haiku worker and the advisor rule",
   "author": {
     "name": "Shoulao"
