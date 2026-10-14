@@ -5,6 +5,8 @@
   "author": {
     "name": "Shoulao"
   },
+  "license": "MIT",
+  "repository": "https://github.com/Shoulao/claude-agent-dashboard",
   "types": "./types/index.d.ts",
   "userConfig": {
     "autoOpen": {

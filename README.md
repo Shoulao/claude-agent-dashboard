@@ -47,7 +47,15 @@ In a Claude Code terminal session:
 /plugin install agent-dashboard --marketplace Shoulao/claude-agent-dashboard
 ```
 
-Answer `y` to add the marketplace, then pick the user scope. The pane opens when a session starts; `/dashboard` reopens it. With the pane focused, the arrow keys scroll it.
+Answer `y` to add the marketplace, then pick the user scope.
+
+Or from any shell, with no session open:
+
+```
+claude plugin install agent-dashboard --marketplace Shoulao/claude-agent-dashboard
+```
+
+It installs for your user (every project) and adds this repo as a marketplace on the way. The pane opens when a session starts; `/dashboard` reopens it. With the pane focused, the arrow keys scroll it.
 
 The plugin uses Claude Code's function hooks (mods), an early-access API: it needs a Claude Code build that has them.
 
@@ -87,3 +95,7 @@ claude plugin test .
 ```
 
 Run a session with `claude --plugin-dir .` to load it from this folder; edits reload when the turn ends.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
