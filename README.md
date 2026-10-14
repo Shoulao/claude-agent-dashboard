@@ -2,13 +2,18 @@
 
 A live dashboard pane for Claude Code. It shows what the session is doing while it runs:
 
-- **Header**: session time, session cost (same total as `/cost`), the active agent and tool
+- **Header**: repo, branch and how many files git sees changed, session time
 - **Phase**: `scout · plan · edit · test · fix · verify`, inferred from tool calls
-- **Cards**: main session (model, turns, tools, reads, edits, tests, errors), subagents (running/finished, type, model, tool count), advisor (calls, when, in which phase, plus a "same error came back" warning)
-- **Session timeline**: activity lanes for main, scouts (Explore), other agents, advisor and errors
-- **Cost & tokens**: input / output / cache tokens per model
+- **MAIN · WORKER · ADVISOR**: what each one is doing now, its counters, recent activity and share of tool calls; the model sits in the card title only (the advisor's from `advisorModel` in settings)
+- **CONTEXT**: window fill, the auto-compact threshold, compactions
+- **FILES**: files edited this session with `+added −removed` lines
+- **TESTS**: passed / failed runs, streak, last green, slowest run (only real test runners count, not commands that mention "test")
+- **COST**: session total, tokens per model, cache hit rate
+- **LIMITS**: plan rate-limit windows and when they reset (subscription plans)
+- **TOOLS**: calls over 10 s and MCP tools used
+- **Session timeline**: activity lanes for main, worker, advisor and errors
 - **tail -f session.log**: the latest events
-- **Band above the prompt**: a one-line summary
+- **Band above the prompt**: a one-line summary, shown while the pane is closed
 
 Every number comes from real session events: tool calls, subagent spawns, model steps and the advisor server tool. Nothing is simulated.
 

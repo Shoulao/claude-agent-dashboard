@@ -1,7 +1,7 @@
 {
   "name": "agent-dashboard",
-  "version": "0.3.1",
-  "description": "Live dashboard pane: main session, subagents, advisor calls, session timeline, cost and a tail -f event log",
+  "version": "0.4.0",
+  "description": "Live dashboard pane: main, worker and advisor, context, files, tests, cost, plan limits, slow tools, timeline and a tail -f log",
   "author": {
     "name": "Shoulao"
   },
