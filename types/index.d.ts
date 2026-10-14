@@ -29,6 +29,8 @@ export type Mark = { at: number; lane: Lane }
 
 export type Tokens = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
+export type PhaseMark = { at: number; phase: string }
+
 export type Running = { tool: string; who: string; since: number }
 
 export type Dash = {
@@ -44,6 +46,7 @@ export type Dash = {
   tokens: Record<string, Tokens>
   costUsd: number | null
   phase: string
+  phases: PhaseMark[]
   marks: Mark[]
   log: LogLine[]
 }

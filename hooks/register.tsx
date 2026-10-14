@@ -3,6 +3,9 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Counters, Dash, Lane, LogLine, SubAgent, Tokens } from '../types'
 
+import { dim } from './frame'
+import { drawPane, short, statusLine } from './pane'
+
 const PANE = 'agent-dashboard'
 const TITLE = 'Agent dashboard'
 const MAX_LOG = 60
@@ -13,7 +16,6 @@ const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFe
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 const PLAN_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode', 'TodoWrite'])
 const TEST_RE = /\b(test|tests|jest|vitest|pytest|rspec|phpunit|mocha|playwright|cypress)\b/
-const STAGES = ['scout', 'plan', 'edit', 'test', 'fix', 'verify']
 
 const zero = (): Counters => ({ turns: 0, tools: 0, reads: 0, edits: 0, bash: 0, tests: 0, errors: 0 })
 
@@ -30,6 +32,7 @@ const empty = (): Dash => ({
   tokens: {},
   costUsd: null,
   phase: 'idle',
+  phases: [],
   marks: [],
   log: [],
 })
@@ -58,6 +61,11 @@ function logged(d: Dash, now: number, lane: Lane, who: string, what: string, tag
   }
 }
 
+function withPhase(d: Dash, phase: string, now: number): Dash {
+  if (phase === d.phase) return d
+  return { ...d, phase, phases: [...d.phases, { at: now, phase }].slice(-50) }
+}
+
 function agentOf(d: Dash, agentId: string | undefined): SubAgent | undefined {
   return agentId === undefined ? undefined : d.agents.find(a => a.id === agentId)
 }
@@ -70,12 +78,6 @@ function laneOf(agent: SubAgent | undefined, agentId: string | undefined): Lane 
 function whoOf(agent: SubAgent | undefined, agentId: string | undefined, mainModel: string): string {
   if (agentId === undefined) return short(mainModel) || 'main'
   return agent === undefined ? 'subagent' : `${agent.type}`
-}
-
-function short(model: string): string {
-  const m = /(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?!\d)/.exec(model)
-  if (m === null) return model.replace(/^claude-/, '')
-  return m[3] === undefined ? `${m[1]} ${m[2]}` : `${m[1]} ${m[2]}.${m[3]}`
 }
 
 function base(path: string): string {
@@ -206,8 +208,8 @@ export const register: Register = (on, options) => {
           tools: 0,
           reads: 0,
         }
-        const phase = e.subagentType === 'Explore' && !d.isTurnRunning ? d.phase : e.subagentType === 'Explore' ? 'scout' : d.phase
-        const next1 = { ...d, phase, agents: [...d.agents, agent].slice(-MAX_AGENTS) }
+        const scouted = e.subagentType === 'Explore' ? withPhase(d, 'scout', now) : d
+        const next1 = { ...scouted, agents: [...scouted.agents, agent].slice(-MAX_AGENTS) }
         return logged(next1, now, laneOf(agent, agentId), agent.type, `${short(agent.model)} · ${oneLine(e.description, 40)}`, 'spawned')
       })
     }
@@ -258,7 +260,7 @@ export const register: Register = (on, options) => {
         else if (isEdit) phase = phase === 'fix' ? 'fix' : 'edit'
         else if (isTest) phase = isError ? 'fix' : 'verify'
         else if (isError) phase = 'fix'
-        out = { ...out, phase }
+        out = withPhase(out, phase, now)
       } else if (agent !== undefined) {
         out = {
           ...out,
@@ -287,179 +289,17 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e)
     const d = await read($, dash)
     const now = await $.clock.now()
-    const cols = Math.max(44, e.props.bodyColumns - 2)
-    const isWide = cols >= 96
-    const cardWidth = isWide ? Math.floor((cols - 2) / 3) : cols
-    const startedAt = d.startedAt === 0 ? now : d.startedAt
-
-    const clock = (at: number) => {
-      const s = Math.max(0, Math.round((at - startedAt) / 1000))
-      return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-    }
-    const pad = (text: string, n: number) => (text.length >= n ? text.slice(0, n) : text + ' '.repeat(n - text.length))
-
-    const running = d.agents.filter(a => a.endedAt === null)
-    const active = d.running !== null
-      ? `${d.running.who} → ${d.running.tool}`
-      : running.length > 0
-        ? `${running[running.length - 1]?.type ?? 'subagent'} (subagent)`
-        : d.isTurnRunning
-          ? `${short(d.mainModel) || 'main'} thinking`
-          : 'idle'
-    const cost = d.costUsd === null ? '—' : `$${d.costUsd.toFixed(2)}`
-
-    // header
-    const header = (
-      <Box flexDirection="column">
-        <Text>
-          <Text bold color="claude">AGENT DASHBOARD</Text>
-          <Text dimColor> · {clock(now)} · </Text>
-          <Text bold>{cost}</Text>
-          <Text dimColor> · active: </Text>
-          <Text bold color={active === 'idle' ? 'inactive' : 'success'}>{active}</Text>
-        </Text>
-        <Text>
-          {STAGES.map(s => (
-            <Text color={s === d.phase ? 'claude' : 'inactive'} bold={s === d.phase} inverse={s === d.phase}>
-              {` ${s} `}
-            </Text>
-          ))}
-          <Text dimColor>  phase (inferred from tool calls)</Text>
-        </Text>
-      </Box>
-    )
-
-    // cards
-    const mainCard = (
-      <Box flexDirection="column" borderStyle="round" borderColor="suggestion" paddingX={1} width={cardWidth}>
-        <Text bold color="suggestion">MAIN · {short(d.mainModel) || 'session'}</Text>
-        <Text dimColor>drives the session, edits the code</Text>
-        <Text>turns  {pad(String(d.main.turns), 6)}tools  {d.main.tools}</Text>
-        <Text>reads  {pad(String(d.main.reads), 6)}edits  {d.main.edits}</Text>
-        <Text>
-          tests  {pad(String(d.main.tests), 6)}errors <Text color={d.main.errors > 0 ? 'error' : 'text'}>{d.main.errors}</Text>
-        </Text>
-        <Text color={d.isTurnRunning ? 'success' : 'inactive'}>{d.isTurnRunning ? '▶ driving' : '◦ waiting for you'}</Text>
-      </Box>
-    )
-
-    const recentAgents = d.agents.slice(-4).reverse()
-    const agentsCard = (
-      <Box flexDirection="column" borderStyle="round" borderColor="success" paddingX={1} width={cardWidth}>
-        <Text bold color="success">SUBAGENTS · {running.length} running · {d.agents.length} total</Text>
-        {recentAgents.length === 0 && <Text dimColor>none yet (Explore scouts show here)</Text>}
-        {recentAgents.map(a => (
-          <Text wrap="truncate-end" color={a.endedAt === null ? 'success' : 'inactive'}>
-            {a.endedAt === null ? '▶' : '✓'} {a.type} · {short(a.model)} · {a.tools} tools
-            {a.endedAt === null ? ` · ${Math.round((now - a.startedAt) / 1000)}s` : ''}
-          </Text>
-        ))}
-      </Box>
-    )
-
-    const recentAdvice = d.advisor.slice(-3).reverse()
-    const advisorCard = (
-      <Box flexDirection="column" borderStyle="round" borderColor="warning" paddingX={1} width={cardWidth}>
-        <Text bold color="warning">ADVISOR · {d.advisor.length} calls</Text>
-        {recentAdvice.length === 0 && <Text dimColor>no calls yet</Text>}
-        {recentAdvice.map(a => (
-          <Text color="warning">◆ {clock(a.at)} during {a.phase}</Text>
-        ))}
-        <Text color={d.repeatedErrors > 0 ? 'error' : 'inactive'}>
-          {d.repeatedErrors > 0 ? `! same error came back ×${d.repeatedErrors}` : '◦ no repeated errors'}
-        </Text>
-      </Box>
-    )
-
-    const cards = isWide ? (
-      <Box flexDirection="row" gap={1}>{mainCard}{agentsCard}{advisorCard}</Box>
-    ) : (
-      <Box flexDirection="column">{mainCard}{agentsCard}{advisorCard}</Box>
-    )
-
-    // timeline
-    const label = 9
-    const width = Math.max(10, cols - label - 4)
-    const span = Math.max(60_000, now - startedAt)
-    const lanes: { lane: Lane; name: string; color: string }[] = [
-      { lane: 'main', name: 'main', color: 'suggestion' },
-      { lane: 'scout', name: 'scouts', color: 'success' },
-      { lane: 'agent', name: 'agents', color: 'merged' },
-      { lane: 'advisor', name: 'advisor', color: 'warning' },
-      { lane: 'error', name: 'errors', color: 'error' },
-    ]
-    const counts: Record<string, number[]> = {}
-    for (const l of lanes) counts[l.lane] = new Array<number>(width).fill(0)
-    for (const m of d.marks) {
-      const col = Math.min(width - 1, Math.max(0, Math.floor(((m.at - startedAt) / span) * width)))
-      const row = counts[m.lane]
-      if (row !== undefined) row[col] = (row[col] ?? 0) + 1
-    }
-    const cell = (lane: Lane, n: number) => (n === 0 ? '·' : lane === 'advisor' ? '◆' : lane === 'error' ? '✕' : n === 1 ? '▒' : n <= 3 ? '▓' : '█')
-    const minutes = Math.round(span / 60_000)
-    const timeline = (
-      <Box flexDirection="column" borderStyle="round" borderColor="subtle" paddingX={1}>
-        <Text bold>SESSION TIMELINE</Text>
-        {lanes.map(l => (
-          <Text wrap="truncate-end">
-            <Text color={l.color}>{pad(l.name, label)}</Text>
-            <Text color={l.color}>{(counts[l.lane] ?? []).map(n => cell(l.lane, n)).join('')}</Text>
-          </Text>
-        ))}
-        <Text dimColor>{pad('', label)}{pad('0m', Math.max(0, width - `${minutes}m`.length))}{minutes}m</Text>
-      </Box>
-    )
-
-    // tokens
-    const models = Object.entries(d.tokens)
-    const k = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
-    const usage = (
-      <Box flexDirection="column" borderStyle="round" borderColor="subtle" paddingX={1}>
-        <Text>
-          <Text bold>COST & TOKENS</Text>
-          <Text dimColor> · session total </Text>
-          <Text bold>{cost}</Text>
-        </Text>
-        {models.length === 0 && <Text dimColor>no model calls yet</Text>}
-        {models.map(([model, t]) => (
-          <Text wrap="truncate-end">
-            {pad(short(model), 12)}
-            <Text dimColor>in </Text>{pad(k(t.input), 7)}
-            <Text dimColor>out </Text>{pad(k(t.output), 7)}
-            <Text dimColor>cache read </Text>{pad(k(t.cacheRead), 7)}
-            <Text dimColor>cache write </Text>{k(t.cacheWrite)}
-          </Text>
-        ))}
-      </Box>
-    )
-
-    // tail -f
-    const room = Math.max(4, Math.min(14, (e.viewport?.rows ?? 48) - 34))
-    const laneColor: Record<Lane, string> = { main: 'suggestion', scout: 'success', agent: 'merged', advisor: 'warning', error: 'error' }
-    const tagWidth = 16
-    const whatWidth = Math.max(10, cols - 6 - 16 - tagWidth - 6)
-    const tail = (
-      <Box flexDirection="column" borderStyle="round" borderColor="subtle" paddingX={1}>
-        <Text bold>tail -f session.log</Text>
-        {d.log.length === 0 && <Text dimColor>waiting for the first event…</Text>}
-        {d.log.slice(-room).map(line => (
-          <Text wrap="truncate-end">
-            <Text dimColor>{clock(line.at)} </Text>
-            <Text color={laneColor[line.lane]}>{pad(line.who, 16)}</Text>
-            {pad(line.what, whatWidth)}
-            <Text color={line.tag === 'error' || line.tag === 'same error again' ? 'error' : 'inactive'}> {line.tag}</Text>
-          </Text>
-        ))}
-      </Box>
-    )
+    const lines = drawPane(d, now, Math.max(48, e.props.bodyColumns - 1))
 
     return (
-      <Box flexDirection="column" gap={0}>
-        {header}
-        {cards}
-        {timeline}
-        {usage}
-        {tail}
+      <Box flexDirection="column">
+        {lines.map(line => (
+          <Text wrap="truncate-end">
+            {line.length === 0 ? ' ' : line.map(s => (
+              <Text color={s.c} bold={s.b} dimColor={s.d} inverse={s.inv}>{s.t}</Text>
+            ))}
+          </Text>
+        ))}
       </Box>
     )
   })
@@ -470,11 +310,12 @@ export const register: Register = (on, options) => {
     if (d.main.turns === 0 && d.agents.length === 0) return next(e)
 
     const { Text } = $.ui.resolve(e)
-    const running = d.agents.filter(a => a.endedAt === null).length
-    const cost = d.costUsd === null ? '' : ` · $${d.costUsd.toFixed(2)}`
+    const line = [...statusLine(d), dim('  · /dashboard')]
     return (
-      <Text dimColor wrap="truncate-end">
-        phase [{d.phase}] · {short(d.mainModel) || 'main'} [{d.isTurnRunning ? 'driving' : 'idle'}] · subagents [{running} running] · advisor [{d.advisor.length}]{cost} · /dashboard
+      <Text wrap="truncate-end">
+        {line.map(s => (
+          <Text color={s.c} bold={s.b} dimColor={s.d}>{s.t}</Text>
+        ))}
       </Text>
     )
   })

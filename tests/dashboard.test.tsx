@@ -18,8 +18,8 @@ test('the pane draws its sections on terminal and desktop', async ($, on) => {
   mock.clock(on, { now: 1_000 })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: /AGENT DASHBOARD/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /SESSION TIMELINE/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /SIGNS OFF/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /session timeline/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /tail -f session.log/ })).toBeDefined()
     await ui.unmount()
   }
@@ -46,8 +46,8 @@ test('the same error twice is flagged for the advisor', async ($, on) => {
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: /same error came back ×1/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: / fix /, })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /same error again ×1/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /▶ fix/})).toBeDefined()
     await ui.unmount()
   }
 })
