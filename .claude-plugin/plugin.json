@@ -1,0 +1,23 @@
+{
+  "name": "agent-dashboard",
+  "version": "0.1.0",
+  "description": "Live dashboard pane: main session, subagents, advisor calls, session timeline, cost and a tail -f event log",
+  "author": {
+    "name": "Shoulao"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open on session start",
+      "description": "Open the dashboard pane when a session starts (otherwise use /dashboard)",
+      "default": true
+    },
+    "band": {
+      "type": "boolean",
+      "title": "Status band above the prompt",
+      "description": "Show a one-line summary (phase, main, subagents, advisor, cost) above the prompt",
+      "default": true
+    }
+  }
+}

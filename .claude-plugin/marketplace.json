@@ -1,0 +1,11 @@
+{
+  "name": "agent-dashboard",
+  "owner": { "name": "Shoulao" },
+  "plugins": [
+    {
+      "name": "agent-dashboard",
+      "source": "./",
+      "description": "Live dashboard pane for Claude Code: main session, subagents, advisor calls, session timeline, cost and a tail -f event log"
+    }
+  ]
+}
