@@ -5,7 +5,7 @@ import type { Dash, FileChange, Lane, LogLine, SubAgent, Tokens } from '../types
 
 import { dim } from './frame'
 import { drawPane, short, statusLine } from './pane'
-import { empty, normalize } from './state'
+import { EDIT_TOOLS, READ_TOOLS, empty, normalize } from './state'
 
 const PANE = 'agent-dashboard'
 const TITLE = 'Agent dashboard'
@@ -18,8 +18,6 @@ const SLOW_MS = 10_000
 const SCREEN_BG = '#16171f'
 const SCREEN_INK = '#c9cde3'
 
-const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch'])
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 const PLAN_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode', 'TodoWrite'])
 // Time spent here is waiting on a person or a whole subagent run, not a slow tool.
 const UNTIMED_TOOLS = new Set(['Agent', 'Task', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'Workflow'])
@@ -245,7 +243,7 @@ export const register: Register = (on, options) => {
     await change($, (d, now) => {
       let out: Dash = d
       if (e.agentId === undefined && e.model !== '' && e.model !== d.mainModel) out = { ...out, mainModel: e.model }
-      if (r.usage !== null) out = { ...out, tokens: addTokens(out.tokens, r.usage.model, r.usage) }
+      if (r.usage !== null) out = { ...out, tokens: addTokens(out.tokens, r.usage.model, r.usage), tokensByRole: addTokens(out.tokensByRole, e.agentId === undefined ? 'main' : 'worker', r.usage) }
       for (const call of calls) {
         const at = call.startedAt || now
         out = logged({ ...out, advisor: [...out.advisor, { at, phase: out.phase, turn: out.main.turns }] }, at, 'advisor', 'advisor', `review · during ${out.phase}`, 'reads all')
@@ -377,7 +375,12 @@ export const register: Register = (on, options) => {
         out = { ...out, tests: [...out.tests, { at: now, isOk: !isError, ms, cmd: oneLine(command, 40) }].slice(-MAX_TESTS) }
       }
 
-      if (!isDenied && !isBackground && !UNTIMED_TOOLS.has(e.tool) && ms >= SLOW_MS) {
+      if (!isDenied && !isBackground && !UNTIMED_TOOLS.has(e.tool) && ms > 0) {
+        out = { ...out, toolMs: out.toolMs + ms, toolTimed: out.toolTimed + 1 }
+      }
+
+      // Test runs have their own card; the slow list is for everything else.
+      if (!isDenied && !isBackground && !isTest && !UNTIMED_TOOLS.has(e.tool) && ms >= SLOW_MS) {
         out = { ...out, slow: [...out.slow, { what: describeCall(e.tool, e).replace(/^Bash /, ''), ms }].sort((a, b) => b.ms - a.ms).slice(0, 10) }
       }
 

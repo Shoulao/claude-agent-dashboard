@@ -61,6 +61,9 @@ export type Dash = {
   lastError: string
   repeatedErrors: number
   tokens: Record<string, Tokens>
+  tokensByRole: Record<string, Tokens>
+  toolMs: number
+  toolTimed: number
   costUsd: number | null
   phase: string
   phases: PhaseMark[]

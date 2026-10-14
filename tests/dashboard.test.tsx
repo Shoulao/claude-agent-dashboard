@@ -81,9 +81,29 @@ test('the same error twice is flagged for the advisor', async ($, on) => {
 
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: /same error\s+1/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /same error\s+! ask now/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /same error again: ask/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /\[✗\] red/ })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('a worker on the main model still counts as worker tokens', async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+  on('turn.step', async function* () {
+    return {
+      turnId: 't', index: 0, answer: '', toolUses: [], stopReason: 'end_turn',
+      usage: { model: 'claude-sonnet-5-5', input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    }
+  } as never)
+  for (const agentId of [undefined, 'worker-1']) {
+    for await (const _ of $.turn.step({ turnId: 't', index: 0, model: 'claude-sonnet-5-5', messageCount: 1, agentId } as never)) void _
+  }
+
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ type: 'Text', text: /main\s+2k tok/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /worker\s+2k tok/ })).toBeDefined()
     await ui.unmount()
   }
 })

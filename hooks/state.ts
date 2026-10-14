@@ -1,6 +1,9 @@
 // The dashboard's state shape and its defaults: pure, so tests and previews load it alone.
 import type { Counters, Dash, Lane } from '../types'
 
+export const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch'])
+export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
 export const zero = (): Counters => ({ turns: 0, tools: 0, reads: 0, edits: 0, bash: 0, tests: 0, errors: 0 })
 
 export const empty = (): Dash => ({
@@ -17,6 +20,9 @@ export const empty = (): Dash => ({
   lastError: '',
   repeatedErrors: 0,
   tokens: {},
+  tokensByRole: {},
+  toolMs: 0,
+  toolTimed: 0,
   costUsd: null,
   phase: 'idle',
   phases: [],

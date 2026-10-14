@@ -2,6 +2,7 @@ import type { Dash, Lane } from '../types'
 
 import { bar, beside, center, dim, fit, frame, len, runs, seg } from './frame'
 import type { Line, Seg } from './frame'
+import { EDIT_TOOLS, READ_TOOLS } from './state'
 
 const STAGES = ['scout', 'plan', 'edit', 'test', 'fix', 'verify']
 
@@ -177,7 +178,8 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   const lastRepeatAt = d.log.filter(l => l.tag === 'same error again').pop()?.at ?? 0
   const askNow = d.repeatedErrors > 0 && (lastCall === undefined || lastCall.at < lastRepeatAt)
 
-  const mix = Object.entries(d.toolMix).sort((a, b) => b[1] - a[1]).slice(0, 3)
+  // The stats count reads and edits; the mix shows the other tools.
+  const mix = Object.entries(d.toolMix).filter(([tool]) => !READ_TOOLS.has(tool) && !EDIT_TOOLS.has(tool)).sort((a, b) => b[1] - a[1]).slice(0, 3)
   const mainCard: Card = {
     title: titled('MAIN', d.mainModel, C.main),
     color: C.main,
@@ -230,24 +232,37 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
     isLit: running.length > 0,
   }
 
+  // The three moments to ask: before locking a plan, when the same error comes
+  // back, and before saying done. Each row says whether a call covered it.
+  const firstRepeatAt = d.log.find(l => l.tag === 'same error again')?.at
+  const points = {
+    plan: d.advisor.some(a => a.phase === 'idle' || a.phase === 'scout' || a.phase === 'plan'),
+    error: firstRepeatAt === undefined ? null : d.advisor.some(a => a.at >= firstRepeatAt),
+    done: d.advisor.some(a => a.phase === 'verify'),
+  }
+  const covered = [points.plan, points.error === true, points.done].filter(Boolean).length
+  const point = (name: string, state: boolean | null): Line => [
+    seg(pad(name, 12)),
+    state === true ? seg('✓', C.ok, { b: true }) : state === false ? seg('! ask now', C.advisor, { b: true }) : dim('—'),
+  ]
   const advisorCard: Card = {
     title: titled('ADVISOR', d.advisorModel, C.advisor),
     color: C.advisor,
     about: ['on call · reads the', 'whole session + tools'],
-    doing: askNow ? 'same error again: ask' : lastCall !== undefined ? 'signed off' : 'waits',
+    doing: askNow ? 'same error again: ask' : lastCall !== undefined ? `last advice ${secs(now - lastCall.at)} ago` : 'not called yet',
     doingColor: askNow ? C.advisor : undefined,
     rows: [
-      stat('calls', d.advisor.length, d.advisor.length > 0 ? C.advisor : undefined),
-      stat('since call', lastCall === undefined ? '—' : secs(now - lastCall.at)),
+      point('before plan', points.plan ? true : null),
+      point('same error', points.error),
+      point('before done', points.done ? true : null),
       stat('turns since', lastCall === undefined ? '—' : Math.max(0, d.main.turns - lastCall.turn)),
-      stat('same error', d.repeatedErrors, d.repeatedErrors > 0 ? C.advisor : undefined),
       [],
       ...d.advisor.slice(-3).reverse().map((a): Line => [seg('◆ ', C.advisor), seg(`turn ${a.turn}`, C.advisor, { b: true }), dim(` · ${a.phase}`)]),
     ],
     rowCount: 8,
-    meter: Math.min(1, d.advisor.length / 3),
-    meterLabel: `${d.advisor.length}/3 points`,
-    light: d.advisor.length > 0 ? `[◆] advised ×${d.advisor.length}` : '[ ] waits',
+    meter: covered / 3,
+    meterLabel: `${covered}/3 points`,
+    light: d.advisor.length > 0 ? `[◆] ${d.advisor.length} call${d.advisor.length === 1 ? '' : 's'}` : '[ ] waits',
     isLit: d.advisor.length > 0,
   }
 
@@ -258,16 +273,17 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   const ctx = d.context
   const nearCompact = ctx !== null && ctx.tokens !== null && ctx.compactAt !== null && ctx.tokens >= ctx.compactAt * 0.9
   const lastCompact = d.compactions[d.compactions.length - 1]
+  const saved = d.compactions.reduce((n, c) => n + (c.before !== null && c.after !== null ? Math.max(0, c.before - c.after) : 0), 0)
   const contextCard: Card = {
     title: [seg('CONTEXT', undefined, { b: true })],
     color: C.frame,
     doing: ctx === null || ctx.tokens === null ? 'not measured yet' : `${k(ctx.tokens)} of ${k(ctx.window)}`,
     rows: ctx === null ? [] : [
-      stat('used', ctx.tokens === null ? '—' : k(ctx.tokens)),
-      stat('window', k(ctx.window)),
+      stat('to compact', ctx.compactAt === null || ctx.tokens === null ? '—' : k(Math.max(0, ctx.compactAt - ctx.tokens)), nearCompact ? C.error : undefined),
       stat('compacts at', ctx.compactAt === null ? 'off' : k(ctx.compactAt)),
       stat('compactions', d.compactions.length),
-      stat('last', lastCompact === undefined ? '—' : `${clock(lastCompact.at)}${lastCompact.before !== null && lastCompact.after !== null ? ` −${k(lastCompact.before - lastCompact.after)}` : ''}`),
+      stat('last', lastCompact === undefined ? '—' : clock(lastCompact.at)),
+      stat('saved', saved === 0 ? '—' : k(saved)),
     ],
     rowCount: 5,
     meter: (ctx?.percent ?? 0) / 100,
@@ -284,7 +300,7 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   const filesCard: Card = {
     title: [seg('FILES', undefined, { b: true })],
     color: C.frame,
-    doing: lastFile === undefined ? 'no edits yet' : `edited ${lastFile.path.split('/').pop() ?? ''}`,
+    doing: lastFile === undefined ? 'no edits yet' : `${d.files.reduce((n, f) => n + f.edits, 0)} edits`,
     rows: d.files.slice(-5).reverse().map((f): Line => [
       seg(pad(`+${f.added}`, 5), C.ok),
       seg(pad(f.isWritten ? 'new' : `−${f.removed}`, 5), f.isWritten ? undefined : C.error, { d: f.isWritten }),
@@ -294,7 +310,7 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
     meter: added + removed === 0 ? 0 : added / (added + removed),
     meterLabel: `+${added} −${removed}`,
     meterColor: C.ok,
-    light: d.files.length > 0 ? `[/] ${d.files.length} file${d.files.length === 1 ? '' : 's'}` : '[ ] no edits',
+    light: lastFile === undefined ? '[ ] no edits' : `[/] last edit ${clock(lastFile.at)}`,
     lightColor: C.ok,
     isLit: d.files.length > 0,
   }
@@ -374,27 +390,24 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   out.push([])
 
   // ---- row 3: what it cost and where time went ----
-  const models = Object.entries(d.tokens)
-    .map(([model, t]) => ({ model, total: t.input + t.output + t.cacheRead + t.cacheWrite }))
-    .sort((a, b) => b.total - a.total)
-  const tok = Object.values(d.tokens).reduce((s, t) => ({ input: s.input + t.input, cacheRead: s.cacheRead + t.cacheRead, cacheWrite: s.cacheWrite + t.cacheWrite }), { input: 0, cacheRead: 0, cacheWrite: 0 })
+  // Tokens by role, not by model: a worker on the main model would otherwise
+  // fold into main's row. Models are named in the cards' titles.
+  const roleTotal = (role: string) => {
+    const t = d.tokensByRole[role]
+    return t === undefined ? 0 : t.input + t.output + t.cacheRead + t.cacheWrite
+  }
+  const tok = Object.values(d.tokensByRole).reduce((s, t) => ({ input: s.input + t.input, cacheRead: s.cacheRead + t.cacheRead, cacheWrite: s.cacheWrite + t.cacheWrite }), { input: 0, cacheRead: 0, cacheWrite: 0 })
   const promptTokens = tok.input + tok.cacheRead + tok.cacheWrite
   const cacheHit = promptTokens === 0 ? 0 : tok.cacheRead / promptTokens
-  const workerModels = new Set(d.agents.map(a => a.model))
-  // The advisor runs inside the API request as a server tool: its tokens come back
-  // in no response's usage, so it has no token count here; the $ total includes it.
-  const hasAdvisor = d.advisor.length > 0
-  const modelRows: Line[] = [
-    ...models.slice(0, hasAdvisor ? 2 : 3).map(({ model, total }): Line => [seg(pad(short(model), 12), model === d.mainModel ? C.main : workerModels.has(model) ? C.worker : undefined), seg(`${k(total)} tok`, undefined, { b: true })]),
-    ...(hasAdvisor ? [[seg(pad(d.advisorModel === '' ? 'advisor' : short(d.advisorModel), 12), C.advisor), dim('in $ only')]] : []),
-  ]
   const costCard: Card = {
     title: [seg('COST', undefined, { b: true })],
     color: C.frame,
     doing: d.costUsd === null ? 'no ledger' : `$${d.costUsd.toFixed(2)} so far`,
     rows: [
-      ...modelRows,
-      ...new Array<Line>(Math.max(0, 3 - modelRows.length)).fill(EMPTY_ROW),
+      [seg(pad('main', 12), C.main), seg(`${k(roleTotal('main'))} tok`, undefined, { b: true })],
+      [seg(pad('worker', 12), C.worker), seg(`${k(roleTotal('worker'))} tok`, undefined, { b: true })],
+      // The advisor runs inside the request as a server tool; no usage names it.
+      [seg(pad('advisor', 12), C.advisor), dim('no separate count')],
       stat('cache read', k(tok.cacheRead)),
       stat('cache write', k(tok.cacheWrite)),
     ],
@@ -402,29 +415,31 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
     meter: cacheHit,
     meterLabel: `${Math.round(cacheHit * 100)}% cached`,
     meterColor: C.ok,
-    light: promptTokens === 0 ? '[ ] no calls yet' : cacheHit >= 0.5 ? '[/] cache warm' : '[ ] cache cold',
-    lightColor: C.ok,
-    isLit: promptTokens > 0 && cacheHit >= 0.5,
+    light: d.costUsd === null || d.main.turns === 0 ? '[ ] no turns yet' : `[$] ${(d.costUsd / d.main.turns).toFixed(2)} per turn`,
+    isLit: false,
   }
 
   const maxUsed = d.limits.reduce((m, l) => Math.max(m, l.percentUsed), 0)
-  const soonest = d.limits.filter(l => l.resetsAt !== null).sort((a, b) => b.percentUsed - a.percentUsed)[0]
+  const fiveHour = d.limits.find(l => l.kind === 'five_hour')
+  const fiveResets = fiveHour?.resetsAt === null || fiveHour === undefined ? NaN : new Date(fiveHour.resetsAt).getTime()
+  // How far the 5h window has run: using more than that share means ahead of pace.
+  const elapsed5h = Number.isNaN(fiveResets) ? null : Math.min(1, Math.max(0, 1 - (fiveResets - Date.now()) / (5 * 3600_000)))
+  const isAhead = fiveHour !== undefined && elapsed5h !== null && fiveHour.percentUsed / 100 > elapsed5h + 0.1
   const limitsCard: Card = {
     title: [seg('LIMITS', undefined, { b: true })],
     color: C.frame,
-    doing: d.limits.length === 0 ? 'none reported' : soonest === undefined ? 'plan windows' : `resets ${resetTime(soonest.resetsAt)}`,
+    doing: d.limits.length === 0 ? 'none reported' : fiveHour?.resetsAt == null ? 'plan windows' : `5h resets ${resetTime(fiveHour.resetsAt)}`,
     rows: d.limits.slice(0, 5).map((l): Line => [
       seg(pad(LIMIT_NAMES[l.kind] ?? l.kind, 12)),
       seg(pad(`${Math.round(l.percentUsed)}%`, 5), l.percentUsed >= 80 ? C.error : undefined, { b: true }),
-      dim(resetTime(l.resetsAt)),
+      dim(l.kind === 'five_hour' ? '' : resetTime(l.resetsAt)),
     ]),
     rowCount: 5,
-    meter: Math.min(1, maxUsed / 100),
-    meterLabel: `${Math.round(maxUsed)}% used`,
-    meterColor: maxUsed >= 80 ? C.error : undefined,
-    light: d.limits.length === 0 ? '[ ] no data' : maxUsed >= 80 ? '[!] near limit' : '[ ] ok',
+    meter: elapsed5h ?? 0,
+    meterLabel: elapsed5h === null ? 'no window' : `${Math.round(elapsed5h * 100)}% of 5h`,
+    light: d.limits.length === 0 ? '[ ] no data' : maxUsed >= 80 ? '[!] near limit' : isAhead ? '[!] ahead of pace' : '[ ] on pace',
     lightColor: C.error,
-    isLit: maxUsed >= 80,
+    isLit: maxUsed >= 80 || isAhead,
   }
 
   const mcp = Object.entries(d.mcp).sort((a, b) => b[1] - a[1])
@@ -441,9 +456,8 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
     rowCount: 5,
     meter: allTools === 0 ? 0 : mcpCalls / allTools,
     meterLabel: `${allTools === 0 ? 0 : Math.round((mcpCalls / allTools) * 100)}% mcp`,
-    light: d.slow.length > 0 ? `[!] ${d.slow.length} slow >10s` : '[ ] nothing slow',
-    lightColor: C.error,
-    isLit: d.slow.length > 0,
+    light: d.toolTimed === 0 ? '[ ] nothing timed' : `[ ] avg ${(d.toolMs / d.toolTimed / 1000).toFixed(1)}s per call`,
+    isLit: false,
   }
 
   out.push(...grid([costCard, limitsCard, toolsCard], cols, layout))
