@@ -58,7 +58,7 @@ The plugin uses Claude Code's function hooks (mods), an early-access API: it nee
 | `autoOpen` | `true` | Opens the pane when a session starts |
 | `band` | `true` | Shows the one-line summary above the prompt while the pane is closed |
 | `background` | `dark` | `dark` draws a dark retro screen; `theme` keeps the app's pane colour |
-| `workerModel` | `haiku` | Model for `Explore` workers when the call names none: `haiku`, `sonnet`, or `inherit` to leave it to Claude Code |
+| `workerModel` | `haiku` | Model for `Explore` workers when the call names none: `haiku`, `sonnet`, or `inherit` to leave it to Claude Code. It is passed as the Agent call's model, which wins over a model set in your own `.claude/agents/Explore.md`; use `inherit` to keep yours |
 | `conciseWorkers` | `true` | Asks `Explore` workers for a short report |
 | `advisorRule` | `false` | Adds one system prompt line: consult the advisor only before a plan, after the same error twice, and before done. Leave it off if your `CLAUDE.md` already says this |
 
