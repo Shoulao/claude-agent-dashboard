@@ -33,7 +33,7 @@ test('a main-loop tool call is counted and logged', async ($, on) => {
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: /Read app\.ts/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /reads\s+1/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /100% tools/ })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -46,7 +46,7 @@ test('the same error twice is flagged for the advisor', async ($, on) => {
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: /same error again ×1/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /same error\s+1/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /▶ fix/})).toBeDefined()
     await ui.unmount()
   }

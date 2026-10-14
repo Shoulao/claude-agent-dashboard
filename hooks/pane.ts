@@ -37,9 +37,7 @@ const k = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n 
 
 const pad = (text: string, n: number) => (text.length >= n ? text.slice(0, n) : text + ' '.repeat(n - text.length))
 
-const stat = (name: string, value: number | string, color?: string): Line => [seg(pad(name, 14)), seg(String(value), color, { b: true })]
-
-const light = (isOn: boolean, on: string, off: string, color: string): Line => (isOn ? [seg(`[/] ${on}`, color, { b: true })] : [dim(`[ ] ${off}`)])
+const stat = (name: string, value: number | string, color?: string): Line => [seg(pad(name, 12)), seg(String(value), color, { b: true })]
 
 /** The bottom status line, also drawn as the band above the prompt. */
 export function statusLine(d: Dash): Line {
@@ -53,7 +51,9 @@ export function statusLine(d: Dash): Line {
   return out
 }
 
-export function drawPane(d: Dash, now: number, cols: number): Line[] {
+export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
+  // Snap the width to the card grid so every frame's right edge lines up.
+  const cols = paneCols >= 78 ? 3 * Math.floor((paneCols - 2) / 3) + 2 : paneCols >= 56 ? 2 * Math.floor((paneCols - 1) / 2) + 1 : paneCols
   const startedAt = d.startedAt === 0 ? now : d.startedAt
   const clock = (at: number) => {
     const s = Math.max(0, Math.round((at - startedAt) / 1000))
@@ -82,8 +82,8 @@ export function drawPane(d: Dash, now: number, cols: number): Line[] {
   ], cols))
   out.push([])
   out.push(center([
-    seg('■', C.main), dim(` ${mainName} · main   `),
-    seg('■', C.scout), dim(` ${scoutModel || 'subagents'} · ${latest?.type ?? 'Explore'}   `),
+    seg('■', C.main), dim(d.mainModel === '' ? ' main session   ' : ` ${mainName} · main   `),
+    seg('■', C.scout), dim(latest === undefined ? ' subagents   ' : ` ${scoutModel} · ${latest.type}   `),
     seg('■', C.advisor), dim(' advisor   '),
     seg('■', C.error), dim(' errors'),
   ], cols))
@@ -104,94 +104,98 @@ export function drawPane(d: Dash, now: number, cols: number): Line[] {
   out.push([])
 
   // ---- three cards ----
-  // three across when there is room; else main on top and two beside it
+  // Every card has the same slots on the same rows: about (2), doing (1),
+  // stats (4), recent (3), meter (1) and light (1), so they line up across.
   const layout = cols >= 78 ? 'row' : cols >= 56 ? 'split' : 'stack'
-  const w = layout === 'row' ? Math.floor((cols - 2) / 3) : layout === 'split' ? Math.floor((cols - 1) / 2) : cols
-  const inner = w - 4
-  const mainInner = layout === 'split' ? w * 2 - 3 : inner
   const allTools = d.main.tools + d.agents.reduce((n, a) => n + a.tools, 0)
-  const mainShare = allTools === 0 ? 0 : d.main.tools / allTools
-
-  const doing = d.running !== null && d.running.who === mainName
-    ? `running ${d.running.tool}`
-    : d.isTurnRunning ? 'thinking' : 'waiting for you'
-  const mainBody: Line[] = [
-    dim2('runs the session'),
-    dim2('edits the code'),
-    [],
-    [seg('$ ', C.main, { b: true }), seg(doing), seg(' _', C.main, { b: true })],
-    [],
-    stat('edits', d.main.edits),
-    stat('errors', d.main.errors, d.main.errors > 0 ? C.error : undefined),
-    stat('tests', d.main.tests),
-    stat('reads', d.main.reads),
-    stat('turns', d.main.turns),
-    [],
-    [seg(`[${bar(mainShare, Math.max(4, mainInner - 2))}]`, C.main)],
-    center(light(d.isTurnRunning, 'driving', 'idle', C.main), mainInner),
-  ]
-
-  const agentReads = d.agents.reduce((n, a) => n + a.reads, 0)
   const agentTools = d.agents.reduce((n, a) => n + a.tools, 0)
+  const agentReads = d.agents.reduce((n, a) => n + a.reads, 0)
   const isScout = latest === undefined || latest.type === 'Explore'
   const agentColor = isScout ? C.scout : C.agent
-  const agentBody: Line[] = [
-    dim2(isScout ? 'scouts repo + docs' : 'own context window'),
-    dim2(isScout ? 'read-only' : `${latest?.type ?? ''}`),
-    [],
-    stat('files read', agentReads),
-    stat('tools', agentTools),
-    stat('running', running.length, running.length > 0 ? agentColor : undefined),
-    stat('total', d.agents.length),
-    [],
-    ...(d.agents.length === 0
-      ? [[dim('[ ] none yet')]]
-      : d.agents.slice(-3).reverse().map((a): Line => a.endedAt === null
-        ? [seg('▶ ', agentColor, { b: true }), seg(pad(a.type, 12), agentColor), dim(short(a.model))]
-        : [dim('✓ '), dim(pad(a.type, 12)), dim(short(a.model))])),
-    [],
-    center(light(running.length > 0, isScout ? 'scouting' : 'working', 'idle', agentColor), inner),
-  ]
+  const lastCall = d.advisor[d.advisor.length - 1]
+  const agentRunning = d.running !== null && d.running.who !== mainName ? d.running : null
+  const pct = (n: number) => (allTools === 0 ? 0 : n / allTools)
 
-  const advisorBody: Line[] = [
-    dim2('on call · reads the'),
-    dim2('whole session + tools'),
-    [],
-    ...(d.advisor.length === 0
-      ? [[dim('◇ no calls yet')]]
-      : d.advisor.slice(-3).reverse().map((a): Line => [seg('◆ ', C.advisor), seg(clock(a.at), C.advisor, { b: true }), dim(` during ${a.phase}`)])),
-    [],
-    d.repeatedErrors > 0
-      ? [seg('◆ ', C.error), seg(`same error again ×${d.repeatedErrors}`, C.error, { b: true })]
-      : [dim('◇ same error again')],
-    d.repeatedErrors > 0 ? [seg('  → time to ask', C.advisor)] : [],
-    [],
-    stat('advisor calls', d.advisor.length, C.advisor),
-    [dim(pad('otherwise', 14)), dim('waits')],
-  ]
+  const mainCard: Card = {
+    title: d.mainModel === ''
+      ? [seg('MAIN SESSION', C.main, { b: true })]
+      : [seg(mainName.toUpperCase(), C.main, { b: true }), seg(' · main', C.main)],
+    color: C.main,
+    isDouble: true,
+    about: ['runs the session', 'edits the code'],
+    doing: d.running !== null && d.running.who === mainName
+      ? `running ${d.running.tool}`
+      : d.isTurnRunning ? 'thinking' : 'waiting for you',
+    stats: [
+      ['edits', d.main.edits],
+      ['tests', d.main.tests],
+      ['errors', d.main.errors, d.main.errors > 0 ? C.error : undefined],
+      ['turns', d.main.turns],
+    ],
+    recent: d.log.filter(l => l.lane === 'main').slice(-3).reverse().map((l, i): Line => [seg('› ', C.main), seg(l.what, undefined, { d: i > 0 })]),
+    meter: pct(d.main.tools),
+    meterLabel: `${Math.round(pct(d.main.tools) * 100)}% tools`,
+    light: d.isTurnRunning ? '[/] driving' : '[ ] idle',
+    isLit: d.isTurnRunning,
+  }
 
-  const mainTitle: Line = [seg(`${mainName.toUpperCase()}`, C.main, { b: true }), seg(' · main', C.main)]
-  const agentTitle: Line = latest === undefined
-    ? [seg('SUBAGENTS', agentColor, { b: true })]
-    : [seg(scoutModel.toUpperCase(), agentColor, { b: true }), seg(` · ${latest.type}`, agentColor)]
-  const advisorTitle: Line = [seg('ADVISOR', C.advisor, { b: true }), seg(d.advisor.length > 0 ? ' · on call' : '', C.advisor)]
+  const agentCard: Card = {
+    title: latest === undefined
+      ? [seg('SUBAGENTS', agentColor, { b: true })]
+      : [seg(scoutModel.toUpperCase(), agentColor, { b: true }), seg(` · ${latest.type}`, agentColor)],
+    color: agentColor,
+    about: isScout ? ['scouts repo + docs', 'read-only'] : ['own context window', latest?.type ?? ''],
+    doing: agentRunning !== null
+      ? `${agentRunning.who} → ${agentRunning.tool}`
+      : running.length > 0 ? `${running[running.length - 1]?.type ?? 'subagent'} working` : 'waiting for main',
+    stats: [
+      ['files read', agentReads],
+      ['tools', agentTools],
+      ['running', running.length, running.length > 0 ? agentColor : undefined],
+      ['done', d.agents.length - running.length],
+    ],
+    recent: d.agents.slice(-3).reverse().map((a): Line => a.endedAt === null
+      ? [seg('▶ ', agentColor, { b: true }), seg(pad(a.type, 12), agentColor), dim(short(a.model))]
+      : [dim('✓ '), dim(pad(a.type, 12)), dim(short(a.model))]),
+    meter: pct(agentTools),
+    meterLabel: `${Math.round(pct(agentTools) * 100)}% tools`,
+    light: running.length > 0 ? (isScout ? '[/] scouting' : '[/] working') : '[ ] idle',
+    isLit: running.length > 0,
+  }
+
+  const askNow = d.repeatedErrors > 0 && (lastCall === undefined || lastCall.at < (d.log.filter(l => l.tag === 'same error again').pop()?.at ?? 0))
+  const advisorCard: Card = {
+    title: [seg('ADVISOR', C.advisor, { b: true })],
+    color: C.advisor,
+    about: ['on call · reads the', 'whole session + tools'],
+    doing: askNow ? 'same error again: ask' : lastCall !== undefined ? `advised at ${clock(lastCall.at)}` : 'waits',
+    doingColor: askNow ? C.advisor : undefined,
+    stats: [
+      ['calls', d.advisor.length, d.advisor.length > 0 ? C.advisor : undefined],
+      ['last call', lastCall === undefined ? '—' : clock(lastCall.at)],
+      ['during', lastCall === undefined ? '—' : lastCall.phase],
+      ['same error', d.repeatedErrors, d.repeatedErrors > 0 ? C.advisor : undefined],
+    ],
+    recent: d.advisor.slice(-3).reverse().map((a): Line => [seg('◆ ', C.advisor), seg(clock(a.at), C.advisor, { b: true }), dim(` ${a.phase}`)]),
+    meter: Math.min(1, d.advisor.length / 3),
+    meterLabel: `${d.advisor.length}/3 points`,
+    light: d.advisor.length > 0 ? `[◆] advised ×${d.advisor.length}` : '[ ] waits',
+    isLit: d.advisor.length > 0,
+  }
 
   if (layout === 'row') {
-    const height = Math.max(mainBody.length, agentBody.length, advisorBody.length)
+    const w = Math.floor((cols - 2) / 3)
     out.push(...beside([
-      frame({ title: agentTitle, color: agentColor, width: w, body: agentBody, height }),
-      frame({ title: mainTitle, color: C.main, width: w, body: mainBody, height, isDouble: true }),
-      frame({ title: advisorTitle, color: C.advisor, width: w, body: advisorBody, height }),
+      drawCard(agentCard, w),
+      drawCard(mainCard, w),
+      drawCard(advisorCard, w),
     ], 1))
+  } else if (layout === 'split') {
+    const w = Math.floor((cols - 1) / 2)
+    out.push(...drawCard(mainCard, cols))
+    out.push(...beside([drawCard(agentCard, w), drawCard(advisorCard, w)], 1))
   } else {
-    const height = layout === 'split' ? Math.max(agentBody.length, advisorBody.length) : undefined
-    out.push(...frame({ title: mainTitle, color: C.main, width: layout === 'split' ? w * 2 + 1 : w, body: mainBody, isDouble: true }))
-    const pair = [
-      frame({ title: agentTitle, color: agentColor, width: w, body: agentBody, height }),
-      frame({ title: advisorTitle, color: C.advisor, width: w, body: advisorBody, height }),
-    ]
-    if (layout === 'split') out.push(...beside(pair, 1))
-    else for (const card of pair) out.push(...card)
+    for (const card of [mainCard, agentCard, advisorCard]) out.push(...drawCard(card, cols))
   }
   out.push([])
 
@@ -282,12 +286,47 @@ export function drawPane(d: Dash, now: number, cols: number): Line[] {
   out.push([])
 
   // ---- prompt-style status ----
-  out.push(fit(statusLine(d), cols))
-  out.push(fit([dim('phase is inferred from tool calls · /dashboard reopens this pane')], cols))
+  out.push(fit([seg('  '), ...statusLine(d)], cols))
+  out.push(fit([dim('  phase is inferred from tool calls · /dashboard reopens this pane')], cols))
 
   return out.map(line => (len(line) > cols ? fit(line, cols) : line))
 }
 
-function dim2(text: string): Line {
-  return [dim(text)]
+type Card = {
+  title: Line
+  color: string
+  isDouble?: boolean
+  about: [string, string]
+  doing: string
+  doingColor?: string
+  stats: [string, number | string, string?][]
+  recent: Line[]
+  meter: number
+  meterLabel: string
+  light: string
+  isLit: boolean
+}
+
+const RECENT_ROWS = 3
+
+function drawCard(card: Card, width: number): Line[] {
+  const inner = Math.max(8, width - 4)
+  const recent = card.recent.slice(0, RECENT_ROWS)
+  while (recent.length < RECENT_ROWS) recent.push([dim('·')])
+  const labelWidth = 11
+  const meterWidth = Math.max(4, inner - 3 - labelWidth)
+  const body: Line[] = [
+    [dim(card.about[0])],
+    [dim(card.about[1])],
+    [],
+    [seg('$ ', card.color, { b: true }), seg(card.doing, card.doingColor, { b: card.doingColor !== undefined }), seg(' _', card.color, { b: true })],
+    [],
+    ...card.stats.map(([name, value, color]) => stat(name, value, color)),
+    [],
+    ...recent,
+    [],
+    [seg(`[${bar(card.meter, meterWidth)}]`, card.color), dim(` ${card.meterLabel}`)],
+    [seg(card.light, card.isLit ? card.color : undefined, { b: card.isLit, d: !card.isLit })],
+  ]
+  return frame({ title: card.title, color: card.color, width, body, isDouble: card.isDouble })
 }
