@@ -43,12 +43,13 @@ const EMPTY_ROW: Line = [dim('·')]
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function resetTime(iso: string | null, now: number): string {
+// Wall-clock time: the reset is an ISO timestamp, compared with Date, not the session clock.
+function resetTime(iso: string | null): string {
   if (iso === null) return ''
   const at = new Date(iso)
   if (Number.isNaN(at.getTime())) return ''
   const hm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
-  return at.getTime() - now < 20 * 3600_000 ? hm : `${WEEKDAYS[at.getDay()] ?? ''} ${hm}`
+  return at.getTime() - Date.now() < 20 * 3600_000 ? hm : `${WEEKDAYS[at.getDay()] ?? ''} ${hm}`
 }
 
 const LIMIT_NAMES: Record<string, string> = { five_hour: '5h window', seven_day: '7d window', spend_limit: 'spend' }
@@ -411,11 +412,11 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   const limitsCard: Card = {
     title: [seg('LIMITS', undefined, { b: true })],
     color: C.frame,
-    doing: d.limits.length === 0 ? 'none reported' : soonest === undefined ? 'plan windows' : `resets ${resetTime(soonest.resetsAt, now)}`,
+    doing: d.limits.length === 0 ? 'none reported' : soonest === undefined ? 'plan windows' : `resets ${resetTime(soonest.resetsAt)}`,
     rows: d.limits.slice(0, 5).map((l): Line => [
       seg(pad(LIMIT_NAMES[l.kind] ?? l.kind, 12)),
       seg(pad(`${Math.round(l.percentUsed)}%`, 5), l.percentUsed >= 80 ? C.error : undefined, { b: true }),
-      dim(resetTime(l.resetsAt, now)),
+      dim(resetTime(l.resetsAt)),
     ]),
     rowCount: 5,
     meter: Math.min(1, maxUsed / 100),
