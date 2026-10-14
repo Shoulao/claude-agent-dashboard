@@ -1,6 +1,6 @@
 {
   "name": "agent-dashboard",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Live dashboard pane: main session, subagents, advisor calls, session timeline, cost and a tail -f event log",
   "author": {
     "name": "Shoulao"
@@ -18,6 +18,16 @@
       "title": "Status band above the prompt",
       "description": "Show a one-line summary (phase, main, subagents, advisor, cost) above the prompt",
       "default": true
+    },
+    "background": {
+      "type": "string",
+      "title": "Pane background",
+      "description": "dark: a dark retro screen; theme: the app's own pane colour",
+      "options": [
+        "dark",
+        "theme"
+      ],
+      "default": "dark"
     }
   }
 }

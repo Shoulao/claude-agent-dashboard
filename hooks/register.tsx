@@ -11,6 +11,8 @@ const TITLE = 'Agent dashboard'
 const MAX_LOG = 60
 const MAX_MARKS = 4000
 const MAX_AGENTS = 30
+const SCREEN_BG = '#16171f'
+const SCREEN_INK = '#c9cde3'
 
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch'])
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
@@ -289,14 +291,18 @@ export const register: Register = (on, options) => {
     const { Box, Text } = $.ui.resolve(e)
     const d = await read($, dash)
     const now = await $.clock.now()
-    const lines = drawPane(d, now, Math.max(48, e.props.bodyColumns - 1))
+    // Dark retro screen by default; 'theme' keeps the surface's own pane colour.
+    const isDark = options.background !== 'theme'
+    const ink = isDark ? SCREEN_INK : undefined
+    // paddingX takes two columns; two more are kept spare so no surface clips the right edge.
+    const lines = drawPane(d, now, Math.max(48, e.props.bodyColumns - 4))
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" paddingX={1} minHeight={e.props.scroll.bodyRows} backgroundColor={isDark ? SCREEN_BG : undefined}>
         {lines.map(line => (
-          <Text wrap="truncate-end">
+          <Text wrap="truncate-end" color={ink}>
             {line.length === 0 ? ' ' : line.map(s => (
-              <Text color={s.c} bold={s.b} dimColor={s.d} inverse={s.inv}>{s.t}</Text>
+              <Text color={s.c ?? ink} bold={s.b} dimColor={s.d} inverse={s.inv}>{s.t}</Text>
             ))}
           </Text>
         ))}

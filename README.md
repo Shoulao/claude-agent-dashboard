@@ -26,6 +26,7 @@ Answer `y` to add the marketplace, then pick the user scope. Open the pane with 
 | --- | --- | --- |
 | `autoOpen` | `true` | Opens the pane when a session starts |
 | `band` | `true` | Shows the one-line summary above the prompt |
+| `background` | `dark` | `dark` draws a dark retro screen; `theme` keeps the app's pane colour |
 
 Change them from the config menu, or with `claude plugin configure agent-dashboard`.
 
