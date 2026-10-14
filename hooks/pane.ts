@@ -5,14 +5,16 @@ import type { Line, Seg } from './frame'
 
 const STAGES = ['scout', 'plan', 'edit', 'test', 'fix', 'verify']
 
+// Mid-tone hex colours so each reads on both dark and light backgrounds:
+// main blue, subagents yellow, advisor red, errors magenta.
 const C = {
-  main: 'suggestion',
-  scout: 'success',
-  agent: 'merged',
-  advisor: 'warning',
-  error: 'error',
+  main: '#4f8cff',
+  scout: '#d4a72c',
+  agent: '#d4a72c',
+  advisor: '#e5534b',
+  error: '#c678dd',
   head: 'claude',
-  now: 'warning',
+  now: 'claude',
 } as const
 
 const laneColor: Record<Lane, string> = {
