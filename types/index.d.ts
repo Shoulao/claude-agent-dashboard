@@ -19,6 +19,8 @@ export type SubAgent = {
   endedAt: number | null
   tools: number
   reads: number
+  promptChars: number
+  reportChars: number | null
 }
 
 export type AdvisorCall = { at: number; phase: string; turn: number }

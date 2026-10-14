@@ -1,7 +1,7 @@
 {
   "name": "agent-dashboard",
-  "version": "0.4.1",
-  "description": "Live dashboard pane: main, worker and advisor, context, files, tests, cost, plan limits, slow tools, timeline and a tail -f log",
+  "version": "0.5.0",
+  "description": "Live dashboard pane for Claude Code (main, worker, advisor, context, files, tests, cost, limits, tools, timeline, log), plus a Haiku worker and the advisor rule",
   "author": {
     "name": "Shoulao"
   },
@@ -28,6 +28,29 @@
         "theme"
       ],
       "default": "dark"
+    },
+    "workerModel": {
+      "type": "string",
+      "title": "Worker model",
+      "description": "Model for Explore workers when the call names none: haiku (cheap scouting) or inherit (leave it to Claude Code)",
+      "options": [
+        "haiku",
+        "sonnet",
+        "inherit"
+      ],
+      "default": "haiku"
+    },
+    "conciseWorkers": {
+      "type": "boolean",
+      "title": "Short worker reports",
+      "description": "Ask Explore workers for a short report (path:line bullets, no pasted files), so less lands in the main context",
+      "default": true
+    },
+    "advisorRule": {
+      "type": "boolean",
+      "title": "Advisor rule",
+      "description": "Add a system prompt line: consult the advisor only before a plan, after the same error twice, and before done",
+      "default": false
     }
   }
 }

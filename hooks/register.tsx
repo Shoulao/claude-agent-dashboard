@@ -18,6 +18,13 @@ const SLOW_MS = 10_000
 const SCREEN_BG = '#16171f'
 const SCREEN_INK = '#c9cde3'
 
+// Appended to an Explore worker's task: its report lands in main's context and
+// is re-sent on every later turn, so a short report is the cheapest one.
+const CONCISE_REPORT = 'Report back briefly: the answer first, then findings as `path:line` bullets of one line each. Do not paste file contents. Stay under 200 words unless the task asks for more.'
+
+// The three moments to consult the advisor, as a system prompt section.
+const ADVISOR_RULE = 'Consult the advisor only at three points: before locking in a plan, after hitting the same error twice, and before declaring a task done; not more often.'
+
 const PLAN_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode', 'TodoWrite'])
 // Time spent here is waiting on a person or a whole subagent run, not a slow tool.
 const UNTIMED_TOOLS = new Set(['Agent', 'Task', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'Workflow'])
@@ -166,7 +173,9 @@ async function refreshUsage($: $): Promise<void> {
 async function refreshGit($: $): Promise<void> {
   try {
     const repo = await $.session.repo()
-    const ran = await $.process.run(['git', 'status', '--porcelain', '-b'], { timeoutMs: 3000 })
+    // A repo's own config can name a program for git to run (core.fsmonitor); turn that off,
+    // so opening a session in a cloned repo never runs its code. Repo hooks are off already.
+    const ran = await $.process.run(['git', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', 'status', '--porcelain', '-b'], { timeoutMs: 3000 })
     const out = ran.stdout.split('\n').filter(l => l !== '')
     const head = out[0] ?? ''
     const branch = head.startsWith('## No commits yet on ')
@@ -257,7 +266,7 @@ export const register: Register = (on, options) => {
     await change($, (d, now) => {
       if (e.agentId !== undefined) {
         const agent = agentOf(d, e.agentId)
-        const agents = d.agents.map(a => (a.id === e.agentId ? { ...a, endedAt: now } : a))
+        const agents = d.agents.map(a => (a.id === e.agentId ? { ...a, endedAt: now, reportChars: e.answer.length } : a))
         return logged({ ...d, agents }, now, 'worker', whoOf(agent, e.agentId), `done in ${Math.round(e.durationMs / 1000)}s`, e.isAborted ? 'aborted' : 'report')
       }
       return logged({ ...d, isTurnRunning: false, running: null }, now, 'main', 'main', `turn done in ${Math.round(e.durationMs / 1000)}s`, e.reason)
@@ -267,6 +276,13 @@ export const register: Register = (on, options) => {
       void refreshGit($)
     }
     return next(e)
+  })
+
+  // The advisor's three moments, added to the system prompt when asked for.
+  on('prompt.compose', async ($, e, next) => {
+    const r = await next(e)
+    if (options.advisorRule !== true) return r
+    return { sections: [...r.sections, { id: 'agent-dashboard:advisor', text: ADVISOR_RULE, scope: 'session' as const }] }
   })
 
   on('session.compact', async ($, e, next) => {
@@ -281,8 +297,16 @@ export const register: Register = (on, options) => {
     return r
   }).catch(($, e, next) => next(e))
 
+  // Workers: an Explore scout runs on the worker model (unless the call named one)
+  // and is asked for a short report.
   on('agent.spawn', async ($, e, next) => {
-    const r = await next(e)
+    let ask = e
+    if (e.subagentType === 'Explore') {
+      const model = typeof options.workerModel === 'string' ? options.workerModel : 'haiku'
+      if (model !== 'inherit' && e.model === undefined) ask = { ...ask, model }
+      if (options.conciseWorkers !== false) ask = { ...ask, prompt: `${ask.prompt}\n\n${CONCISE_REPORT}` }
+    }
+    const r = await next(ask)
     const agentId = r.agentId
     if (agentId !== undefined) {
       await change($, (d, now) => {
@@ -295,6 +319,8 @@ export const register: Register = (on, options) => {
           endedAt: null,
           tools: 0,
           reads: 0,
+          promptChars: ask.prompt.length,
+          reportChars: null,
         }
         const scouted = e.subagentType === 'Explore' ? withPhase(d, 'scout', now) : d
         const withAgent = { ...scouted, agents: [...scouted.agents, agent].slice(-MAX_AGENTS) }

@@ -42,6 +42,9 @@ const secs = (ms: number) => (ms >= 60_000 ? `${Math.floor(ms / 60_000)}m${Strin
 
 const EMPTY_ROW: Line = [dim('·')]
 
+/** A plugin's agent type `plugin:name` shown by its name. */
+const typeName = (type: string) => type.split(':').pop() ?? type
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 // Wall-clock time: the reset is an ISO timestamp, compared with Date, not the session clock.
@@ -155,6 +158,8 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   out.push([])
 
   const seen = new Set(d.phases.map(p => p.phase))
+  // A test run goes straight to fix or verify; the test stage was still passed through.
+  if (d.tests.length > 0) seen.add('test')
   const stages: Line = []
   STAGES.forEach((name, i) => {
     if (i > 0) stages.push(seg('  '))
@@ -203,26 +208,28 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
     isLit: d.isTurnRunning,
   }
 
+  const reports = d.agents.map(a => a.reportChars).filter((c): c is number => c !== null)
   const workerRunning = d.running !== null && d.running.who !== 'main' ? d.running : null
   const workerCard: Card = {
     title: titled('WORKER', workerModel, C.worker),
     color: C.worker,
     about: ['scouts and helps', 'in its own context'],
     doing: workerRunning !== null
-      ? `${workerRunning.who} → ${workerRunning.tool}`
-      : running.length > 0 ? `${running[running.length - 1]?.type ?? 'worker'} working` : 'waiting for main',
+      ? `${typeName(workerRunning.who)} → ${workerRunning.tool}`
+      : running.length > 0 ? `${typeName(running[running.length - 1]?.type ?? 'worker')} working` : 'waiting for main',
     rows: [
       stat('files read', agentReads),
       stat('tools', agentTools),
-      stat('running', running.length, running.length > 0 ? C.worker : undefined),
       stat('done', d.agents.length - running.length),
+      // What a worker hands back lands in main's context: ~4 characters a token.
+      stat('avg report', reports.length === 0 ? '—' : `~${k(Math.round(reports.reduce((n, c) => n + c, 0) / reports.length / 4))} tok`),
       [],
       ...d.agents.slice(-3).reverse().map((a): Line => {
         const took = (a.endedAt ?? now) - a.startedAt
         const other = a.model !== workerModel ? ` ${short(a.model).split(' ')[0] ?? ''}` : ''
         return a.endedAt === null
-          ? [seg('▶ ', C.worker, { b: true }), seg(pad(a.type, 10), C.worker), dim(`${a.tools}t ${secs(took)}${other}`)]
-          : [dim('✓ '), dim(pad(a.type, 10)), dim(`${a.tools}t ${secs(took)}${other}`)]
+          ? [seg('▶ ', C.worker, { b: true }), seg(pad(typeName(a.type), 10), C.worker), dim(`${a.tools}t ${secs(took)}${other}`)]
+          : [dim('✓ '), dim(pad(typeName(a.type), 10)), dim(`${a.tools}t ${secs(took)}${other}`)]
       }),
     ],
     rowCount: 8,
@@ -464,7 +471,7 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   out.push([])
 
   // ---- tail -f ----
-  const tagW = 14
+  const tagW = 16
   const whoW = 12
   const whatW = Math.max(8, cols - 4 - 6 - whoW - tagW - 1)
   const tailBody: Line[] = d.log.length === 0

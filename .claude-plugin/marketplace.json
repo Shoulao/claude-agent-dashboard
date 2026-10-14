@@ -1,6 +1,6 @@
 {
   "name": "agent-dashboard",
-  "description": "Live agent dashboard for Claude Code",
+  "description": "Agent dashboard for Claude Code: main, worker and advisor, live",
   "owner": {
     "name": "Shoulao"
   },
@@ -8,7 +8,7 @@
     {
       "name": "agent-dashboard",
       "source": "./",
-      "description": "Live dashboard pane for Claude Code: main session, subagents, advisor calls, session timeline, cost and a tail -f event log"
+      "description": "Sonnet drives, Haiku scouts, Opus signs off: a three-role setup with a live retro dashboard pane"
     }
   ]
 }

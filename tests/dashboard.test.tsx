@@ -20,6 +20,8 @@ const PANE = {
 
 const SURFACES = ['terminal', 'desktop'] as const
 
+const COMPOSE = { model: 'claude-sonnet-5-5', promptModel: 'claude-sonnet-5-5', surfaces: [], tools: [], outputStyle: null, traits: [] }
+
 test('the pane draws its sections on terminal and desktop', async ($, on) => {
   mock.clock(on, { now: 1_000 })
   for (const surface of SURFACES) {
@@ -106,4 +108,34 @@ test('a worker on the main model still counts as worker tokens', async ($, on) =
     expect(await ui.find({ type: 'Text', text: /worker\s+2k tok/ })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('an Explore worker runs on haiku and is asked for a short report', async ($, on) => {
+  mock.clock(on, { now: 1_000 })
+  const seen: { model?: string; prompt: string }[] = []
+  on('agent.spawn', (_$, e) => {
+    seen.push({ model: e.model, prompt: e.prompt })
+    return { model: 'claude-haiku-5-5', agentId: `w${seen.length}` }
+  })
+  await $.agent.spawn({ prompt: 'find the router', subagentType: 'Explore', description: 'scan' } as never)
+  await $.agent.spawn({ prompt: 'find the router', subagentType: 'Explore', description: 'scan', model: 'sonnet' } as never)
+  await $.agent.spawn({ prompt: 'write the docs', subagentType: 'general-purpose', description: 'docs' } as never)
+
+  expect(seen[0]?.model).toBe('haiku')
+  expect(seen[0]?.prompt).toContain('Report back briefly')
+  expect(seen[1]?.model).toBe('sonnet')
+  expect(seen[2]?.model).toBeUndefined()
+  expect(seen[2]?.prompt).toBe('write the docs')
+})
+
+test('the advisor rule joins the system prompt only when asked for', async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'hi', scope: 'shared' as const }] }))
+  const plain = await $.prompt.compose(COMPOSE)
+  expect(plain.sections.map(s => s.id)).toEqual(['intro'])
+})
+
+test('with advisorRule on, the rule is the last section', { options: { advisorRule: true } }, async ($, on) => {
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'hi', scope: 'shared' as const }] }))
+  const composed = await $.prompt.compose(COMPOSE)
+  expect(composed.sections.map(s => s.id)).toEqual(['intro', 'agent-dashboard:advisor'])
 })

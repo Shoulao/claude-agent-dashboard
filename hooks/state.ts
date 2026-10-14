@@ -46,6 +46,7 @@ export function normalize(raw: Dash): Dash {
   return {
     ...d,
     main: { ...zero(), ...d.main },
+    agents: d.agents.map(a => ({ ...a, promptChars: typeof a.promptChars === 'number' ? a.promptChars : 0, reportChars: typeof a.reportChars === 'number' ? a.reportChars : null })),
     advisor: d.advisor.map(a => ({ ...a, turn: typeof a.turn === 'number' ? a.turn : 0 })),
     marks: d.marks.map(m => ({ ...m, lane: toLane(m.lane) })),
     log: d.log.map(l => ({ ...l, lane: toLane(l.lane) })),
