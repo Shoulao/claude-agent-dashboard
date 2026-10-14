@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Dash, FileChange, Lane, LogLine, SubAgent, Tokens } from '../types'
 
-import { dim } from './frame'
+import { dim, fit, seg } from './frame'
 import { drawPane, short, statusLine } from './pane'
 import { EDIT_TOOLS, READ_TOOLS, empty, normalize } from './state'
 
@@ -437,17 +437,22 @@ export const register: Register = (on, options) => {
     const d = normalize(await read($, dash))
     const now = await $.clock.now()
     // Dark retro screen by default; 'theme' keeps the surface's own pane colour.
-    const isDark = options.background !== 'theme'
-    const ink = isDark ? SCREEN_INK : undefined
-    // paddingX takes two columns; two more are kept spare so no surface clips the right edge.
-    const rows = drawPane(d, now, Math.max(48, e.props.bodyColumns - 4))
+    // A Box background is not painted on every surface, so the colour goes on each
+    // line's text instead: every line is padded to the full width, and blank lines
+    // fill the pane's height, so the whole body is covered.
+    const bg = options.background !== 'theme' ? SCREEN_BG : undefined
+    const ink = bg === undefined ? undefined : SCREEN_INK
+    const width = Math.max(48, e.props.bodyColumns)
+    // One column of margin on the left, two kept spare on the right.
+    const rows = drawPane(d, now, width - 3).map(line => fit([seg(' '), ...line], width))
+    while (bg !== undefined && rows.length < e.props.scroll.bodyRows) rows.push(fit([], width))
 
     return (
-      <Box flexDirection="column" paddingX={1} minHeight={e.props.scroll.bodyRows} backgroundColor={isDark ? SCREEN_BG : undefined}>
+      <Box flexDirection="column" backgroundColor={bg}>
         {rows.map(line => (
-          <Text wrap="truncate-end" color={ink}>
-            {line.length === 0 ? ' ' : line.map(s => (
-              <Text color={s.c ?? ink} bold={s.b} dimColor={s.d} inverse={s.inv}>{s.t}</Text>
+          <Text wrap="truncate-end" color={ink} backgroundColor={bg}>
+            {line.map(s => (
+              <Text color={s.c ?? ink} backgroundColor={bg} bold={s.b} dimColor={s.d} inverse={s.inv}>{s.t}</Text>
             ))}
           </Text>
         ))}
