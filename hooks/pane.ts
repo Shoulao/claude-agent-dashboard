@@ -380,13 +380,20 @@ export function drawPane(d: Dash, now: number, paneCols: number): Line[] {
   const promptTokens = tok.input + tok.cacheRead + tok.cacheWrite
   const cacheHit = promptTokens === 0 ? 0 : tok.cacheRead / promptTokens
   const workerModels = new Set(d.agents.map(a => a.model))
+  // The advisor runs inside the API request as a server tool: its tokens come back
+  // in no response's usage, so it has no token count here; the $ total includes it.
+  const hasAdvisor = d.advisor.length > 0
+  const modelRows: Line[] = [
+    ...models.slice(0, hasAdvisor ? 2 : 3).map(({ model, total }): Line => [seg(pad(short(model), 12), model === d.mainModel ? C.main : workerModels.has(model) ? C.worker : undefined), seg(`${k(total)} tok`, undefined, { b: true })]),
+    ...(hasAdvisor ? [[seg(pad(d.advisorModel === '' ? 'advisor' : short(d.advisorModel), 12), C.advisor), dim('in $ only')]] : []),
+  ]
   const costCard: Card = {
     title: [seg('COST', undefined, { b: true })],
     color: C.frame,
     doing: d.costUsd === null ? 'no ledger' : `$${d.costUsd.toFixed(2)} so far`,
     rows: [
-      ...models.slice(0, 3).map(({ model, total }): Line => [seg(pad(short(model), 12), model === d.mainModel ? C.main : workerModels.has(model) ? C.worker : undefined), seg(`${k(total)} tok`, undefined, { b: true })]),
-      ...new Array<Line>(Math.max(0, 3 - Math.min(3, models.length))).fill(EMPTY_ROW),
+      ...modelRows,
+      ...new Array<Line>(Math.max(0, 3 - modelRows.length)).fill(EMPTY_ROW),
       stat('cache read', k(tok.cacheRead)),
       stat('cache write', k(tok.cacheWrite)),
     ],
