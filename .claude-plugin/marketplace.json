@@ -1,6 +1,9 @@
 {
   "name": "agent-dashboard",
-  "owner": { "name": "Shoulao" },
+  "description": "Live agent dashboard for Claude Code",
+  "owner": {
+    "name": "Shoulao"
+  },
   "plugins": [
     {
       "name": "agent-dashboard",
